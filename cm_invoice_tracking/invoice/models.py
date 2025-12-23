@@ -1,6 +1,5 @@
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
-from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
 
@@ -136,15 +135,7 @@ class Work(models.Model):
         NONE = "NONE", "None"
 
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
-    work_month = models.CharField(
-        max_length=7,
-        validators=[
-            RegexValidator(
-                regex=r"^\\d{4}-(0[1-9]|1[0-2])$",
-                message="work_month must be in YYYY-MM format.",
-            )
-        ],
-    )
+    work_month = models.CharField(max_length=7)
     bn_release_status = models.CharField(
         max_length=20, choices=BNReleaseStatus.choices, default=BNReleaseStatus.OPEN
     )

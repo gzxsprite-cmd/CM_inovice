@@ -108,13 +108,33 @@ JAZZMIN_SETTINGS = {
     "welcome_sign": "Welcome to CM Invoice Tracking",
     "show_sidebar": True,
     "navigation_expanded": True,
+    "changeform_format": "single",
+    "changeform_format_overrides": {
+        "invoice.customer": "single",
+        "invoice.work": "single",
+    },
     "custom_links": {
         "invoice": [
             {
                 "name": "Dashboard",
-                "url": "admin:invoice_dashboard",
+                "url": "/admin/",
                 "icon": "fas fa-chart-line",
             }
         ]
     },
+    "order_with_respect_to": [
+        "invoice.work",
+        "invoice.customer",
+        "invoice.user",
+        "auth.group",
+    ],
+    "hide_models": [
+        "invoice.customersteprule",
+        "invoice.systemsetting",
+        "invoice.workstep",
+        "auth.permission",
+        "contenttypes.contenttype",
+        "sessions.session",
+        "admin.logentry",
+    ],
 }

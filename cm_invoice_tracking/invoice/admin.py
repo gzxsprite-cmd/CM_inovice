@@ -1,4 +1,5 @@
 from datetime import timedelta
+import re
 
 from django import forms
 from django.contrib import admin, messages
@@ -29,6 +30,27 @@ class WorkStepForm(forms.ModelForm):
         return cleaned_data
 
 
+class WorkAdminForm(forms.ModelForm):
+    class Meta:
+        model = Work
+        fields = "__all__"
+
+    def clean_work_month(self):
+        value = self.cleaned_data.get("work_month", "")
+        if value is None:
+            raise forms.ValidationError("work_month must be in YYYY-MM format (e.g. 2025-12).")
+        normalized = (
+            value.strip()
+            .replace("–", "-")
+            .replace("—", "-")
+            .replace("−", "-")
+            .replace("/", "-")
+        )
+        if not re.match(r"^\\d{4}-(0[1-9]|1[0-2])$", normalized):
+            raise forms.ValidationError("work_month must be in YYYY-MM format (e.g. 2025-12).")
+        return normalized
+
+
 class WorkStepInline(admin.TabularInline):
     model = WorkStep
     form = WorkStepForm
@@ -46,7 +68,6 @@ class CustomerStepRuleInline(admin.TabularInline):
     ordering = ("step_no",)
 
 
-@admin.register(User)
 class UserAdmin(DjangoUserAdmin):
     list_display = ("username", "english_name", "role", "scnx")
     fieldsets = DjangoUserAdmin.fieldsets + (
@@ -57,7 +78,6 @@ class UserAdmin(DjangoUserAdmin):
     )
 
 
-@admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
     list_display = ("ile", "round_location", "region", "responsible_cm", "responsible_lcm")
     inlines = [CustomerStepRuleInline]
@@ -72,8 +92,6 @@ class CustomerAdmin(admin.ModelAdmin):
             )
         return queryset.filter(responsible_cm=request.user)
 
-
-@admin.register(CustomerStepRule)
 class CustomerStepRuleAdmin(admin.ModelAdmin):
     list_display = ("customer", "step_no", "rule_type")
 
@@ -95,9 +113,8 @@ class CustomerStepRuleAdmin(admin.ModelAdmin):
             return True
         return False
 
-
-@admin.register(Work)
 class WorkAdmin(admin.ModelAdmin):
+    form = WorkAdminForm
     list_display = (
         "customer",
         "work_month",
@@ -134,8 +151,6 @@ class WorkAdmin(admin.ModelAdmin):
             return True
         return False
 
-
-@admin.register(SystemSetting)
 class SystemSettingAdmin(admin.ModelAdmin):
     list_display = ("auto_generation_enabled",)
 
@@ -150,7 +165,7 @@ def _filter_work_queryset_for_user(queryset, user):
     return queryset.filter(customer__responsible_cm=user)
 
 
-def dashboard_view(request):
+def dashboard_view(request, admin_site):
     today = timezone.localdate()
     visible_works = _filter_work_queryset_for_user(
         Work.objects.select_related("customer", "assigned_cm", "assigned_lcm"),
@@ -209,27 +224,38 @@ def dashboard_view(request):
             )
 
     context = dict(
-        admin.site.each_context(request),
+        admin_site.each_context(request),
         exception_works=exception_works,
         exception_count=len(exception_works),
         upcoming_steps=upcoming_steps,
     )
     return TemplateResponse(request, "admin/invoice/dashboard.html", context)
 
+class InvoiceAdminSite(admin.AdminSite):
+    site_header = "CM Invoice Tracking"
 
-def _get_admin_urls(original_get_urls):
-    def get_urls():
-        urls = original_get_urls()
+    def get_urls(self):
+        urls = super().get_urls()
         custom_urls = [
             path(
                 "invoice/dashboard/",
-                admin.site.admin_view(dashboard_view),
+                self.admin_view(self.dashboard_view),
                 name="invoice_dashboard",
             )
         ]
         return custom_urls + urls
 
-    return get_urls
+    def dashboard_view(self, request):
+        return dashboard_view(request, self)
+
+    def index(self, request, extra_context=None):
+        return dashboard_view(request, self)
 
 
-admin.site.get_urls = _get_admin_urls(admin.site.get_urls)
+admin_site = InvoiceAdminSite(name="invoice_admin")
+admin_site.register(User, UserAdmin)
+admin_site.register(Customer, CustomerAdmin)
+admin_site.register(CustomerStepRule, CustomerStepRuleAdmin)
+admin_site.register(Work, WorkAdmin)
+admin_site.register(WorkStep)
+admin_site.register(SystemSetting, SystemSettingAdmin)
