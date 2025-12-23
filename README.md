@@ -46,6 +46,8 @@ http://127.0.0.1:8000/admin/
 3. 创建 Customer 与对应的 4 条 CustomerStepRule（Step 1-4）。
 4. 打开 Dashboard 页面，点击“批量生成当月”或“批量创建下月”来生成 Work 与 WorkStep。
 
+说明：Work 的月份字段为 `work_month`，格式固定为 `YYYY-MM`。
+
 Dashboard 地址：
 
 ```

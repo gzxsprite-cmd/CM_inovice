@@ -14,7 +14,7 @@ from invoice.models import SystemSetting
 from invoice.models import User
 from invoice.models import Work
 from invoice.models import WorkStep
-from invoice.services import bulk_ensure_work_for_month
+from invoice.services import bulk_ensure_work_for_month, format_work_month
 
 
 class WorkStepForm(forms.ModelForm):
@@ -34,6 +34,17 @@ class WorkStepInline(admin.TabularInline):
     form = WorkStepForm
     extra = 0
 
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+class CustomerStepRuleInline(admin.TabularInline):
+    model = CustomerStepRule
+    extra = 0
+    max_num = 4
+    can_delete = False
+    ordering = ("step_no",)
+
 
 @admin.register(User)
 class UserAdmin(DjangoUserAdmin):
@@ -49,6 +60,7 @@ class UserAdmin(DjangoUserAdmin):
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
     list_display = ("ile", "round_location", "region", "responsible_cm", "responsible_lcm")
+    inlines = [CustomerStepRuleInline]
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
@@ -88,15 +100,21 @@ class CustomerStepRuleAdmin(admin.ModelAdmin):
 class WorkAdmin(admin.ModelAdmin):
     list_display = (
         "customer",
-        "period_year",
-        "period_month",
+        "work_month",
         "bn_release_status",
         "assigned_cm",
         "assigned_lcm",
     )
-    list_filter = ("bn_release_status", "customer_region", "period_year", "period_month")
+    list_filter = ("bn_release_status", "customer_region", "work_month")
     search_fields = ("customer__ile", "customer__round_location")
     inlines = [WorkStepInline]
+    readonly_fields = (
+        "customer_region",
+        "assigned_cm",
+        "assigned_lcm",
+        "assigned_lcm_scnx",
+    )
+    fields = ("customer", "work_month", "bn_release_status", "comment") + readonly_fields
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
@@ -181,9 +199,8 @@ def dashboard_view(request):
                     target_month = 1
                 else:
                     target_month += 1
-            created, existed, steps_created = bulk_ensure_work_for_month(
-                target_year, target_month
-            )
+            work_month = format_work_month(target_year, target_month)
+            created, existed, steps_created = bulk_ensure_work_for_month(work_month)
             messages.success(
                 request,
                 "Bulk generation complete: created {}, existed {}, steps created {}.".format(

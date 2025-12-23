@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
 
@@ -69,10 +70,26 @@ class CustomerStepRule(models.Model):
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     step_no = models.IntegerField(choices=STEP_CHOICES)
     rule_type = models.CharField(max_length=40, choices=RuleType.choices)
-    day_of_month = models.IntegerField(blank=True, null=True)
-    nth = models.IntegerField(blank=True, null=True)
-    weekday = models.IntegerField(blank=True, null=True)
-    last_nth = models.IntegerField(blank=True, null=True)
+    day_of_month = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text="For THIS_MONTH_DAY / NEXT_MONTH_DAY: set day 1-31.",
+    )
+    nth = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text="For THIS_MONTH_NTH_WEEKDAY: set nth (1-5).",
+    )
+    weekday = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text="For THIS_MONTH_NTH_WEEKDAY: set weekday 0-6 (0=Mon).",
+    )
+    last_nth = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text="For THIS_MONTH_LAST_NTH_DAY: set last_nth (1=last day).",
+    )
 
     class Meta:
         constraints = [
@@ -119,8 +136,15 @@ class Work(models.Model):
         NONE = "NONE", "None"
 
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
-    period_year = models.IntegerField()
-    period_month = models.IntegerField()
+    work_month = models.CharField(
+        max_length=7,
+        validators=[
+            RegexValidator(
+                regex=r"^\\d{4}-(0[1-9]|1[0-2])$",
+                message="work_month must be in YYYY-MM format.",
+            )
+        ],
+    )
     bn_release_status = models.CharField(
         max_length=20, choices=BNReleaseStatus.choices, default=BNReleaseStatus.OPEN
     )
@@ -145,13 +169,24 @@ class Work(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["customer", "period_year", "period_month"],
-                name="unique_work_period",
+                fields=["customer", "work_month"],
+                name="uniq_work_customer_month",
             )
         ]
 
     def __str__(self):
-        return "{} {}-{:02d}".format(self.customer, self.period_year, self.period_month)
+        return "{} {}".format(self.customer, self.work_month)
+
+    def save(self, *args, **kwargs):
+        if self.customer_id:
+            self.customer_region = self.customer.region
+            self.assigned_cm = self.customer.responsible_cm
+            self.assigned_lcm = self.customer.responsible_lcm
+            self.assigned_lcm_scnx = getattr(self.assigned_lcm, "scnx", None)
+        super().save(*args, **kwargs)
+        from invoice.services import ensure_steps_for_work
+
+        ensure_steps_for_work(self)
 
 
 class WorkStep(models.Model):
