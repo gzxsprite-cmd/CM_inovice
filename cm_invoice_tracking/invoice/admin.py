@@ -1,10 +1,12 @@
 from datetime import timedelta
+import calendar
 
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.db.models import Q
 from django.template.response import TemplateResponse
+from django.urls import reverse
 from django.urls import path
 from django.utils import timezone
 
@@ -29,6 +31,26 @@ class WorkStepForm(forms.ModelForm):
         return cleaned_data
 
 
+class CustomerStepRuleInlineForm(forms.ModelForm):
+    step_no = forms.IntegerField(disabled=True, required=False)
+
+    class Meta:
+        model = CustomerStepRule
+        fields = "__all__"
+
+    def clean_step_no(self):
+        if self.instance and self.instance.pk:
+            return self.instance.step_no
+        return self.initial.get("step_no")
+
+
+class CustomerStepRuleInlineFormSet(forms.BaseInlineFormSet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for index, form in enumerate(self.extra_forms, start=1):
+            form.initial.setdefault("step_no", index)
+
+
 class WorkStepInline(admin.TabularInline):
     model = WorkStep
     form = WorkStepForm
@@ -40,14 +62,45 @@ class WorkStepInline(admin.TabularInline):
 
 class CustomerStepRuleInline(admin.TabularInline):
     model = CustomerStepRule
-    extra = 0
+    form = CustomerStepRuleInlineForm
+    formset = CustomerStepRuleInlineFormSet
+    extra = 4
     max_num = 4
     can_delete = False
     ordering = ("step_no",)
 
+    def get_extra(self, request, obj=None, **kwargs):
+        if obj is None:
+            return 4
+        return 0
+
+
+class LcmScnxFilter(admin.SimpleListFilter):
+    title = "LCM SCNx"
+    parameter_name = "lcm_scnx"
+
+    def lookups(self, request, model_admin):
+        return [
+            (User.Scnx.SCN1, "SCN1"),
+            (User.Scnx.SCN2, "SCN2"),
+            ("__none__", "Empty"),
+        ]
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == "__none__":
+            return queryset.filter(
+                Q(responsible_lcm__scnx__isnull=True) | Q(responsible_lcm__scnx="")
+            )
+        if value in {User.Scnx.SCN1, User.Scnx.SCN2}:
+            return queryset.filter(responsible_lcm__scnx=value)
+        return queryset
+
 
 class UserAdmin(DjangoUserAdmin):
     list_display = ("username", "english_name", "role", "scnx")
+    list_filter = ("english_name", "role", "scnx")
+    search_fields = ("username", "english_name")
     fieldsets = DjangoUserAdmin.fieldsets + (
         ("CM Invoice", {"fields": ("english_name", "role", "scnx")}),
     )
@@ -57,7 +110,19 @@ class UserAdmin(DjangoUserAdmin):
 
 
 class CustomerAdmin(admin.ModelAdmin):
-    list_display = ("ile", "round_location", "region", "responsible_cm", "responsible_lcm")
+    list_display = (
+        "customer_label",
+        "region",
+        "responsible_cm",
+        "responsible_lcm",
+        "lcm_scnx",
+        "rules_summary",
+    )
+    list_display_links = ("customer_label",)
+    list_filter = ("ile", "region", "responsible_cm", "responsible_lcm", LcmScnxFilter)
+    search_fields = ("ile", "round_location")
+    readonly_fields = ("lcm_scnx",)
+    fields = ("ile", "round_location", "region", "responsible_cm", "responsible_lcm", "lcm_scnx")
     inlines = [CustomerStepRuleInline]
 
     def get_queryset(self, request):
@@ -69,6 +134,41 @@ class CustomerAdmin(admin.ModelAdmin):
                 Q(responsible_cm=request.user) | Q(responsible_lcm=request.user)
             )
         return queryset.filter(responsible_cm=request.user)
+
+    def customer_label(self, obj):
+        return "{} / {}".format(obj.ile, obj.round_location)
+
+    customer_label.short_description = "ILE / Round"
+
+    def lcm_scnx(self, obj):
+        if obj.responsible_lcm:
+            return obj.responsible_lcm.scnx
+        return ""
+
+    lcm_scnx.short_description = "LCM SCNx"
+
+    def rules_summary(self, obj):
+        rules = CustomerStepRule.objects.filter(customer=obj).order_by("step_no")
+        weekday_map = list(calendar.day_abbr)
+        parts = []
+        for rule in rules:
+            if rule.rule_type == CustomerStepRule.RuleType.NO_RULE:
+                label = "NoRule"
+            elif rule.rule_type == CustomerStepRule.RuleType.THIS_MONTH_DAY:
+                label = "ThisMonthDay({})".format(rule.day_of_month)
+            elif rule.rule_type == CustomerStepRule.RuleType.NEXT_MONTH_DAY:
+                label = "NextMonthDay({})".format(rule.day_of_month)
+            elif rule.rule_type == CustomerStepRule.RuleType.THIS_MONTH_NTH_WEEKDAY:
+                weekday_label = weekday_map[rule.weekday] if rule.weekday is not None else ""
+                label = "NthWeekday({}, {})".format(rule.nth, weekday_label)
+            elif rule.rule_type == CustomerStepRule.RuleType.THIS_MONTH_LAST_NTH_DAY:
+                label = "LastNthDay({})".format(rule.last_nth)
+            else:
+                label = rule.rule_type
+            parts.append("S{}:{}".format(rule.step_no, label))
+        return ", ".join(parts)
+
+    rules_summary.short_description = "Step Rules"
 
 class CustomerStepRuleAdmin(admin.ModelAdmin):
     list_display = ("customer", "step_no", "rule_type")
@@ -94,13 +194,23 @@ class CustomerStepRuleAdmin(admin.ModelAdmin):
 class WorkAdmin(admin.ModelAdmin):
     list_display = (
         "customer",
-        "work_year",
-        "work_month",
+        "work_period",
         "bn_release_status",
+        "customer_region",
         "assigned_cm",
         "assigned_lcm",
+        "assigned_lcm_scnx",
     )
-    list_filter = ("bn_release_status", "customer_region", "work_year", "work_month")
+    list_filter = (
+        "customer",
+        "work_year",
+        "work_month",
+        "customer_region",
+        "assigned_cm",
+        "assigned_lcm",
+        "assigned_lcm_scnx",
+        "bn_release_status",
+    )
     search_fields = ("customer__ile", "customer__round_location")
     inlines = [WorkStepInline]
     readonly_fields = (
@@ -134,6 +244,11 @@ class WorkAdmin(admin.ModelAdmin):
         if request.user.role == User.Role.LCM:
             return True
         return False
+
+    def work_period(self, obj):
+        return "{}-{:02d}".format(obj.work_year, obj.work_month)
+
+    work_period.short_description = "Work Period"
 
 class SystemSettingAdmin(admin.ModelAdmin):
     list_display = ("auto_generation_enabled",)
@@ -169,12 +284,26 @@ def dashboard_view(request, admin_site):
     for work in bn_issue_works:
         exception_work_map[work.id] = {
             "work": work,
+            "work_admin_url": reverse("admin:invoice_work_change", args=[work.id]),
+            "customer_label": "{} / {}".format(
+                work.customer.ile, work.customer.round_location
+            ),
             "overdue_steps": [],
         }
 
     for step in overdue_steps:
         entry = exception_work_map.setdefault(
-            step.work_id, {"work": step.work, "overdue_steps": []}
+            step.work_id,
+            {
+                "work": step.work,
+                "work_admin_url": reverse(
+                    "admin:invoice_work_change", args=[step.work_id]
+                ),
+                "customer_label": "{} / {}".format(
+                    step.work.customer.ile, step.work.customer.round_location
+                ),
+                "overdue_steps": [],
+            },
         )
         entry["overdue_steps"].append(step)
 
@@ -186,6 +315,16 @@ def dashboard_view(request, admin_site):
         step_status=WorkStep.StepStatus.OPEN,
         planned_due_date__range=(today, next_week),
     ).select_related("work", "work__customer")
+    upcoming_entries = [
+        {
+            "step": step,
+            "work_admin_url": reverse("admin:invoice_work_change", args=[step.work_id]),
+            "customer_label": "{} / {}".format(
+                step.work.customer.ile, step.work.customer.round_location
+            ),
+        }
+        for step in upcoming_steps
+    ]
 
     if request.method == "POST":
         action = request.POST.get("action")
@@ -212,7 +351,7 @@ def dashboard_view(request, admin_site):
         admin_site.each_context(request),
         exception_works=exception_works,
         exception_count=len(exception_works),
-        upcoming_steps=upcoming_steps,
+        upcoming_entries=upcoming_entries,
     )
     return TemplateResponse(request, "admin/invoice/dashboard.html", context)
 

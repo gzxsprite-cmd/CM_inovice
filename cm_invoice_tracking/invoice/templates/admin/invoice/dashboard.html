@@ -10,14 +10,14 @@
   <button class="button" type="submit" name="action" value="bulk_next">批量创建下月</button>
 </form>
 
-<h2>异常列表</h2>
+<h2>异常<br>列表</h2>
 <p>异常 Work 数量: {{ exception_count }}</p>
 <table class="adminlist table table-striped">
   <thead>
     <tr>
       <th>Customer</th>
       <th>Work Period</th>
-      <th>BN Status</th>
+      <th>BN release status</th>
       <th>Overdue Steps</th>
       <th>负责人</th>
     </tr>
@@ -25,7 +25,7 @@
   <tbody>
     {% for item in exception_works %}
       <tr>
-        <td>{{ item.work.customer }}</td>
+        <td><a href="{{ item.work_admin_url }}">{{ item.customer_label }}</a></td>
         <td>{{ item.work.work_year }}-{{ item.work.work_month|stringformat:"02d" }}</td>
         <td>{{ item.work.bn_release_status }}</td>
         <td>
@@ -56,12 +56,12 @@
     </tr>
   </thead>
   <tbody>
-    {% for step in upcoming_steps %}
+    {% for entry in upcoming_entries %}
       <tr>
-        <td>{{ step.work.customer }}</td>
-        <td>{{ step.work.work_year }}-{{ step.work.work_month|stringformat:"02d" }}</td>
-        <td>Step {{ step.step_no }}</td>
-        <td>{{ step.planned_due_date }}</td>
+        <td><a href="{{ entry.work_admin_url }}">{{ entry.customer_label }}</a></td>
+        <td>{{ entry.step.work.work_year }}-{{ entry.step.work.work_month|stringformat:"02d" }}</td>
+        <td>Step {{ entry.step.step_no }}</td>
+        <td>{{ entry.step.planned_due_date }}</td>
       </tr>
     {% empty %}
       <tr><td colspan="4">No upcoming steps.</td></tr>
