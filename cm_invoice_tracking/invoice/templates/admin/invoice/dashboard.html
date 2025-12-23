@@ -1,0 +1,71 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<h1>CM Invoice Dashboard</h1>
+
+<form method="post" style="margin-bottom: 20px;">
+  {% csrf_token %}
+  <button class="button" type="submit" name="action" value="bulk_current">批量生成当月</button>
+  <button class="button" type="submit" name="action" value="bulk_next">批量创建下月</button>
+</form>
+
+<h2>异常列表</h2>
+<p>异常 Work 数量: {{ exception_count }}</p>
+<table class="adminlist table table-striped">
+  <thead>
+    <tr>
+      <th>Customer</th>
+      <th>Work Period</th>
+      <th>BN Status</th>
+      <th>Overdue Steps</th>
+      <th>负责人</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in exception_works %}
+      <tr>
+        <td>{{ item.work.customer }}</td>
+        <td>{{ item.work.work_month }}</td>
+        <td>{{ item.work.bn_release_status }}</td>
+        <td>
+          {% if item.overdue_steps %}
+            {% for step in item.overdue_steps %}
+              Step {{ step.step_no }} ({{ step.planned_due_date }}){% if not forloop.last %}, {% endif %}
+            {% endfor %}
+          {% else %}
+            -
+          {% endif %}
+        </td>
+        <td>{{ item.work.assigned_cm }} / {{ item.work.assigned_lcm }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5">No exceptions.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>未来 7 天提醒</h2>
+<table class="adminlist table table-striped">
+  <thead>
+    <tr>
+      <th>Customer</th>
+      <th>Work Period</th>
+      <th>Step</th>
+      <th>Planned Due Date</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for step in upcoming_steps %}
+      <tr>
+        <td>{{ step.work.customer }}</td>
+        <td>{{ step.work.work_month }}</td>
+        <td>Step {{ step.step_no }}</td>
+        <td>{{ step.planned_due_date }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4">No upcoming steps.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
