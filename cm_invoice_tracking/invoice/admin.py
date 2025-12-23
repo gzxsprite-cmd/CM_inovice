@@ -31,6 +31,8 @@ class WorkStepForm(forms.ModelForm):
 
 
 class WorkAdminForm(forms.ModelForm):
+    work_month = forms.CharField(required=True, strip=True)
+
     class Meta:
         model = Work
         fields = "__all__"
@@ -39,9 +41,10 @@ class WorkAdminForm(forms.ModelForm):
         value = self.cleaned_data.get("work_month", "")
         if value is None:
             raise forms.ValidationError("work_month must be in YYYY-MM format (e.g. 2025-12).")
+        normalized = value.strip()
+        normalized = normalized.replace("\u00a0", " ").strip()
         normalized = (
-            value.strip()
-            .replace("–", "-")
+            normalized.replace("–", "-")
             .replace("—", "-")
             .replace("−", "-")
             .replace("/", "-")
