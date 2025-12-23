@@ -21,10 +21,11 @@ pip install -r requirements.txt
 
 ```bash
 cd cm_invoice_tracking
-python manage.py makemigrations
 python manage.py migrate
 python manage.py createsuperuser
 ```
+
+本仓库已包含初始迁移文件（invoice/migrations/0001_initial.py），因此无需再执行 makemigrations，直接 migrate 即可。
 
 启动：
 
