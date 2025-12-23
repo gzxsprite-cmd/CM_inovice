@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -135,7 +136,12 @@ class Work(models.Model):
         NONE = "NONE", "None"
 
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
-    work_month = models.CharField(max_length=7)
+    work_year = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1000), MaxValueValidator(9999)]
+    )
+    work_month = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(12)]
+    )
     bn_release_status = models.CharField(
         max_length=20, choices=BNReleaseStatus.choices, default=BNReleaseStatus.OPEN
     )
@@ -160,13 +166,13 @@ class Work(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["customer", "work_month"],
-                name="uniq_work_customer_month",
+                fields=["customer", "work_year", "work_month"],
+                name="uniq_work_customer_year_month",
             )
         ]
 
     def __str__(self):
-        return "{} {}".format(self.customer, self.work_month)
+        return "{} {}-{:02d}".format(self.customer, self.work_year, self.work_month)
 
     def save(self, *args, **kwargs):
         if self.customer_id:

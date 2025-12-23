@@ -26,7 +26,7 @@
     {% for item in exception_works %}
       <tr>
         <td>{{ item.work.customer }}</td>
-        <td>{{ item.work.work_month }}</td>
+        <td>{{ item.work.work_year }}-{{ item.work.work_month|stringformat:"02d" }}</td>
         <td>{{ item.work.bn_release_status }}</td>
         <td>
           {% if item.overdue_steps %}
@@ -59,7 +59,7 @@
     {% for step in upcoming_steps %}
       <tr>
         <td>{{ step.work.customer }}</td>
-        <td>{{ step.work.work_month }}</td>
+        <td>{{ step.work.work_year }}-{{ step.work.work_month|stringformat:"02d" }}</td>
         <td>Step {{ step.step_no }}</td>
         <td>{{ step.planned_due_date }}</td>
       </tr>

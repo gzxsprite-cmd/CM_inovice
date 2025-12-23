@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from invoice.models import SystemSetting
-from invoice.services import bulk_ensure_work_for_month, format_work_month
+from invoice.services import bulk_ensure_work_for_month
 
 
 class Command(BaseCommand):
@@ -36,8 +36,9 @@ class Command(BaseCommand):
         next_year = today.year + 1 if today.month == 12 else today.year
         next_month = 1 if today.month == 12 else today.month + 1
 
-        work_month = format_work_month(next_year, next_month)
-        created, existed, steps_created = bulk_ensure_work_for_month(work_month)
+        created, existed, steps_created = bulk_ensure_work_for_month(
+            next_year, next_month
+        )
         self.stdout.write(
             "Created {}, existed {}, steps created {}.".format(
                 created, existed, steps_created

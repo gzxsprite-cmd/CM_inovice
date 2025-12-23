@@ -16,15 +16,6 @@ def _next_month(year, month):
     return year, month + 1
 
 
-def parse_work_month(work_month):
-    year, month = work_month.split("-")
-    return int(year), int(month)
-
-
-def format_work_month(year, month):
-    return "{}-{:02d}".format(year, month)
-
-
 def compute_planned_due_date(rule, period_year, period_month):
     if rule is None or rule.rule_type == CustomerStepRule.RuleType.NO_RULE:
         return None
@@ -66,7 +57,8 @@ def ensure_steps_for_work(work):
         rule.step_no: rule
         for rule in CustomerStepRule.objects.filter(customer=work.customer)
     }
-    period_year, period_month = parse_work_month(work.work_month)
+    period_year = work.work_year
+    period_month = work.work_month
 
     for step_no in range(1, 5):
         step, _ = WorkStep.objects.get_or_create(work=work, step_no=step_no)
@@ -78,9 +70,10 @@ def ensure_steps_for_work(work):
             step.save()
 
 
-def ensure_work_for_customer(customer, work_month):
+def ensure_work_for_customer(customer, work_year, work_month):
     work, created = Work.objects.get_or_create(
         customer=customer,
+        work_year=work_year,
         work_month=work_month,
     )
 
@@ -90,7 +83,7 @@ def ensure_work_for_customer(customer, work_month):
     return work
 
 
-def bulk_ensure_work_for_month(work_month, scoped_customers=None):
+def bulk_ensure_work_for_month(work_year, work_month, scoped_customers=None):
     created_count = 0
     existed_count = 0
     steps_created_count = 0
@@ -101,11 +94,11 @@ def bulk_ensure_work_for_month(work_month, scoped_customers=None):
         for customer in customers:
             work, created = Work.objects.get_or_create(
                 customer=customer,
+                work_year=work_year,
                 work_month=work_month,
             )
             if created:
                 created_count += 1
-                steps_created_count += WorkStep.objects.filter(work=work).count()
             else:
                 existed_count += 1
 
@@ -113,7 +106,6 @@ def bulk_ensure_work_for_month(work_month, scoped_customers=None):
                 rule.step_no: rule
                 for rule in CustomerStepRule.objects.filter(customer=customer)
             }
-            period_year, period_month = parse_work_month(work_month)
 
             for step_no in range(1, 5):
                 step, step_created = WorkStep.objects.get_or_create(
@@ -124,7 +116,7 @@ def bulk_ensure_work_for_month(work_month, scoped_customers=None):
                 if step.planned_due_date is None:
                     rule = rules_by_step.get(step_no)
                     step.planned_due_date = compute_planned_due_date(
-                        rule, period_year, period_month
+                        rule, work_year, work_month
                     )
                     step.save()
 

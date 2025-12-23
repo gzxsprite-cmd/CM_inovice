@@ -1,5 +1,4 @@
 from datetime import timedelta
-import re
 
 from django import forms
 from django.contrib import admin, messages
@@ -15,7 +14,7 @@ from invoice.models import SystemSetting
 from invoice.models import User
 from invoice.models import Work
 from invoice.models import WorkStep
-from invoice.services import bulk_ensure_work_for_month, format_work_month
+from invoice.services import bulk_ensure_work_for_month
 
 
 class WorkStepForm(forms.ModelForm):
@@ -28,30 +27,6 @@ class WorkStepForm(forms.ModelForm):
         if cleaned_data.get("planned_due_date") is None:
             raise forms.ValidationError("planned_due_date is required.")
         return cleaned_data
-
-
-class WorkAdminForm(forms.ModelForm):
-    work_month = forms.CharField(required=True, strip=True)
-
-    class Meta:
-        model = Work
-        fields = "__all__"
-
-    def clean_work_month(self):
-        value = self.cleaned_data.get("work_month", "")
-        if value is None:
-            raise forms.ValidationError("work_month must be in YYYY-MM format (e.g. 2025-12).")
-        normalized = value.strip()
-        normalized = normalized.replace("\u00a0", " ").strip()
-        normalized = (
-            normalized.replace("–", "-")
-            .replace("—", "-")
-            .replace("−", "-")
-            .replace("/", "-")
-        )
-        if not re.match(r"^\\d{4}-(0[1-9]|1[0-2])$", normalized):
-            raise forms.ValidationError("work_month must be in YYYY-MM format (e.g. 2025-12).")
-        return normalized
 
 
 class WorkStepInline(admin.TabularInline):
@@ -117,15 +92,15 @@ class CustomerStepRuleAdmin(admin.ModelAdmin):
         return False
 
 class WorkAdmin(admin.ModelAdmin):
-    form = WorkAdminForm
     list_display = (
         "customer",
+        "work_year",
         "work_month",
         "bn_release_status",
         "assigned_cm",
         "assigned_lcm",
     )
-    list_filter = ("bn_release_status", "customer_region", "work_month")
+    list_filter = ("bn_release_status", "customer_region", "work_year", "work_month")
     search_fields = ("customer__ile", "customer__round_location")
     inlines = [WorkStepInline]
     readonly_fields = (
@@ -134,7 +109,13 @@ class WorkAdmin(admin.ModelAdmin):
         "assigned_lcm",
         "assigned_lcm_scnx",
     )
-    fields = ("customer", "work_month", "bn_release_status", "comment") + readonly_fields
+    fields = (
+        "customer",
+        "work_year",
+        "work_month",
+        "bn_release_status",
+        "comment",
+    ) + readonly_fields
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
@@ -217,8 +198,9 @@ def dashboard_view(request, admin_site):
                     target_month = 1
                 else:
                     target_month += 1
-            work_month = format_work_month(target_year, target_month)
-            created, existed, steps_created = bulk_ensure_work_for_month(work_month)
+            created, existed, steps_created = bulk_ensure_work_for_month(
+                target_year, target_month
+            )
             messages.success(
                 request,
                 "Bulk generation complete: created {}, existed {}, steps created {}.".format(
