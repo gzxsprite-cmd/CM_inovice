@@ -116,13 +116,19 @@ JAZZMIN_SETTINGS = {
     "custom_links": {
         "invoice": [
             {
-                "name": "Dashboard",
+                "name": "Overview",
                 "url": "/admin/",
                 "icon": "fas fa-chart-line",
-            }
+            },
+            {
+                "name": "Dashboard",
+                "url": "/admin/admin-dashboard/",
+                "icon": "fas fa-tachometer-alt",
+            },
         ]
     },
     "order_with_respect_to": [
+        "invoice",
         "invoice.work",
         "invoice.customer",
         "invoice.user",

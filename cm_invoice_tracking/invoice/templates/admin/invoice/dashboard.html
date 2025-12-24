@@ -2,7 +2,7 @@
 {% load i18n %}
 
 {% block content %}
-<h1>CM Invoice Dashboard</h1>
+<h1>CM Invoice Overview</h1>
 
 <form method="post" style="margin-bottom: 20px;">
   {% csrf_token %}
@@ -31,7 +31,7 @@
         <td>
           {% if item.overdue_steps %}
             {% for step in item.overdue_steps %}
-              Step {{ step.step_no }} ({{ step.planned_due_date }}){% if not forloop.last %}, {% endif %}
+              {{ step.step_label }} ({{ step.planned_due_date }}){% if not forloop.last %}, {% endif %}
             {% endfor %}
           {% else %}
             -
@@ -60,7 +60,7 @@
       <tr>
         <td><a href="{{ entry.work_admin_url }}">{{ entry.customer_label }}</a></td>
         <td>{{ entry.step.work.work_year }}-{{ entry.step.work.work_month|stringformat:"02d" }}</td>
-        <td>Step {{ entry.step.step_no }}</td>
+        <td>{{ entry.step.step_label }}</td>
         <td>{{ entry.step.planned_due_date }}</td>
       </tr>
     {% empty %}

@@ -13,6 +13,7 @@ from django.utils import timezone
 from invoice.models import Customer
 from invoice.models import CustomerStepRule
 from invoice.models import SystemSetting
+from invoice.models import STEP_LABELS
 from invoice.models import User
 from invoice.models import Work
 from invoice.models import WorkStep
@@ -32,16 +33,25 @@ class WorkStepForm(forms.ModelForm):
 
 
 class CustomerStepRuleInlineForm(forms.ModelForm):
-    step_no = forms.IntegerField(disabled=True, required=False)
+    step_no = forms.ChoiceField(disabled=True, required=False, choices=CustomerStepRule.STEP_CHOICES)
 
     class Meta:
         model = CustomerStepRule
         fields = "__all__"
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        step_value = self.initial.get("step_no") or getattr(self.instance, "step_no", None)
+        if step_value:
+            self.fields["step_no"].label = STEP_LABELS.get(int(step_value), f"Step {step_value}")
+
     def clean_step_no(self):
         if self.instance and self.instance.pk:
             return self.instance.step_no
-        return self.initial.get("step_no")
+        initial_no = self.initial.get("step_no")
+        if isinstance(initial_no, str) and initial_no.isdigit():
+            return int(initial_no)
+        return initial_no
 
 
 class CustomerStepRuleInlineFormSet(forms.BaseInlineFormSet):
@@ -49,6 +59,7 @@ class CustomerStepRuleInlineFormSet(forms.BaseInlineFormSet):
         super().__init__(*args, **kwargs)
         for index, form in enumerate(self.extra_forms, start=1):
             form.initial.setdefault("step_no", index)
+            form.fields["step_no"].label = STEP_LABELS.get(index, f"Step {index}")
 
 
 class WorkStepInline(admin.TabularInline):
@@ -98,7 +109,7 @@ class LcmScnxFilter(admin.SimpleListFilter):
 
 
 class UserAdmin(DjangoUserAdmin):
-    list_display = ("username", "english_name", "role", "scnx")
+    list_display = ("english_name", "role", "scnx")
     list_filter = ("english_name", "role", "scnx")
     search_fields = ("username", "english_name")
     fieldsets = DjangoUserAdmin.fieldsets + (
@@ -124,6 +135,11 @@ class CustomerAdmin(admin.ModelAdmin):
     readonly_fields = ("lcm_scnx",)
     fields = ("ile", "round_location", "region", "responsible_cm", "responsible_lcm", "lcm_scnx")
     inlines = [CustomerStepRuleInline]
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name in {"responsible_cm", "responsible_lcm"}:
+            kwargs["queryset"] = User.objects.order_by("english_name")
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
@@ -165,7 +181,8 @@ class CustomerAdmin(admin.ModelAdmin):
                 label = "LastNthDay({})".format(rule.last_nth)
             else:
                 label = rule.rule_type
-            parts.append("S{}:{}".format(rule.step_no, label))
+            step_label = CustomerStepRule.get_step_label(rule.step_no)
+            parts.append("{}:{}".format(step_label, label))
         return ", ".join(parts)
 
     rules_summary.short_description = "Step Rules"
@@ -264,7 +281,7 @@ def _filter_work_queryset_for_user(queryset, user):
     return queryset.filter(customer__responsible_cm=user)
 
 
-def dashboard_view(request, admin_site):
+def overview_view(request, admin_site):
     today = timezone.localdate()
     visible_works = _filter_work_queryset_for_user(
         Work.objects.select_related("customer", "assigned_cm", "assigned_lcm"),
@@ -362,18 +379,31 @@ class InvoiceAdminSite(admin.AdminSite):
         urls = super().get_urls()
         custom_urls = [
             path(
-                "invoice/dashboard/",
-                self.admin_view(self.dashboard_view),
+                "invoice/overview/",
+                self.admin_view(self.overview_view),
                 name="invoice_dashboard",
-            )
+            ),
+            path(
+                "invoice/dashboard/",
+                self.admin_view(self.overview_view),
+                name="invoice_dashboard_legacy",
+            ),
+            path(
+                "admin-dashboard/",
+                self.admin_view(self.admin_dashboard),
+                name="admin_default_dashboard",
+            ),
         ]
         return custom_urls + urls
 
-    def dashboard_view(self, request):
-        return dashboard_view(request, self)
+    def overview_view(self, request):
+        return overview_view(request, self)
 
     def index(self, request, extra_context=None):
-        return dashboard_view(request, self)
+        return overview_view(request, self)
+
+    def admin_dashboard(self, request, extra_context=None):
+        return super().index(request, extra_context)
 
 
 admin_site = InvoiceAdminSite(name="invoice_admin")

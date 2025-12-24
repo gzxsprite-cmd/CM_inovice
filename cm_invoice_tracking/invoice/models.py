@@ -20,7 +20,7 @@ class User(AbstractUser):
     role = models.CharField(max_length=10, choices=Role.choices, blank=True, null=True)
 
     def __str__(self):
-        return self.username
+        return self.english_name or "Unknown"
 
 
 class Customer(models.Model):
@@ -57,6 +57,14 @@ class Customer(models.Model):
         return "{} / {}".format(self.ile, self.round_location)
 
 
+STEP_LABELS = {
+    1: "Step1. Customer billing notification alignment",
+    2: "Step2. RB internal mapping",
+    3: "Step3. Billing data adjustment",
+    4: "Step4. Invoice issue & booking",
+}
+
+
 class CustomerStepRule(models.Model):
     class RuleType(models.TextChoices):
         NO_RULE = "NO_RULE", "No Rule"
@@ -65,7 +73,7 @@ class CustomerStepRule(models.Model):
         THIS_MONTH_NTH_WEEKDAY = "THIS_MONTH_NTH_WEEKDAY", "This Month Nth Weekday"
         THIS_MONTH_LAST_NTH_DAY = "THIS_MONTH_LAST_NTH_DAY", "This Month Last Nth Day"
 
-    STEP_CHOICES = [(1, "Step 1"), (2, "Step 2"), (3, "Step 3"), (4, "Step 4")]
+    STEP_CHOICES = [(no, label) for no, label in STEP_LABELS.items()]
 
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     step_no = models.IntegerField(choices=STEP_CHOICES)
@@ -98,6 +106,10 @@ class CustomerStepRule(models.Model):
             )
         ]
 
+    @staticmethod
+    def get_step_label(step_no):
+        return STEP_LABELS.get(step_no, f"Step {step_no}")
+
     def clean(self):
         errors = {}
         if self.rule_type == self.RuleType.NO_RULE:
@@ -125,7 +137,7 @@ class CustomerStepRule(models.Model):
             raise ValidationError(errors)
 
     def __str__(self):
-        return "{} Step {}".format(self.customer, self.step_no)
+        return "{} {}".format(self.customer, self.get_step_label(self.step_no))
 
 
 class Work(models.Model):
@@ -191,7 +203,7 @@ class WorkStep(models.Model):
         OPEN = "OPEN", "Open"
         CLOSED = "CLOSED", "Closed"
 
-    STEP_CHOICES = [(1, "Step 1"), (2, "Step 2"), (3, "Step 3"), (4, "Step 4")]
+    STEP_CHOICES = [(no, label) for no, label in STEP_LABELS.items()]
 
     work = models.ForeignKey(Work, on_delete=models.CASCADE)
     step_no = models.IntegerField(choices=STEP_CHOICES)
@@ -207,13 +219,21 @@ class WorkStep(models.Model):
             models.UniqueConstraint(fields=["work", "step_no"], name="unique_work_step")
         ]
 
+    @staticmethod
+    def get_step_label(step_no):
+        return STEP_LABELS.get(step_no, f"Step {step_no}")
+
+    @property
+    def step_label(self):
+        return self.get_step_label(self.step_no)
+
     def save(self, *args, **kwargs):
         if self.step_status == self.StepStatus.CLOSED and self.actual_closed_date is None:
             self.actual_closed_date = timezone.localdate()
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return "{} Step {}".format(self.work, self.step_no)
+        return "{} {}".format(self.work, self.get_step_label(self.step_no))
 
 
 class SystemSetting(models.Model):
