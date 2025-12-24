@@ -3,7 +3,8 @@ import calendar
 
 from django import forms
 from django.contrib import admin, messages
-from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.contrib.auth.admin import GroupAdmin, UserAdmin as DjangoUserAdmin
+from django.contrib.auth.models import Group
 from django.db.models import Q
 from django.template.response import TemplateResponse
 from django.urls import reverse
@@ -141,16 +142,6 @@ class CustomerAdmin(admin.ModelAdmin):
             kwargs["queryset"] = User.objects.order_by("english_name")
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
-    def get_queryset(self, request):
-        queryset = super().get_queryset(request)
-        if request.user.is_superuser or request.user.role == User.Role.HOD:
-            return queryset
-        if request.user.role == User.Role.LCM:
-            return queryset.filter(
-                Q(responsible_cm=request.user) | Q(responsible_lcm=request.user)
-            )
-        return queryset.filter(responsible_cm=request.user)
-
     def customer_label(self, obj):
         return "{} / {}".format(obj.ile, obj.round_location)
 
@@ -246,14 +237,7 @@ class WorkAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
-        if request.user.is_superuser or request.user.role == User.Role.HOD:
-            return queryset
-        if request.user.role == User.Role.LCM:
-            return queryset.filter(
-                Q(customer__responsible_cm=request.user)
-                | Q(customer__responsible_lcm=request.user)
-            )
-        return queryset.filter(customer__responsible_cm=request.user)
+        return visible_works_for_user(queryset, request.user)
 
     def has_delete_permission(self, request, obj=None):
         if request.user.is_superuser or request.user.role == User.Role.HOD:
@@ -271,19 +255,19 @@ class SystemSettingAdmin(admin.ModelAdmin):
     list_display = ("auto_generation_enabled",)
 
 
-def _filter_work_queryset_for_user(queryset, user):
+def visible_works_for_user(queryset, user):
     if user.is_superuser or user.role == User.Role.HOD:
         return queryset
     if user.role == User.Role.LCM:
-        return queryset.filter(
-            Q(customer__responsible_cm=user) | Q(customer__responsible_lcm=user)
-        )
-    return queryset.filter(customer__responsible_cm=user)
+        return queryset.filter(Q(assigned_lcm=user) | Q(assigned_cm=user))
+    if user.role == User.Role.CM:
+        return queryset.filter(assigned_cm=user)
+    return queryset.none()
 
 
 def overview_view(request, admin_site):
     today = timezone.localdate()
-    visible_works = _filter_work_queryset_for_user(
+    visible_works = visible_works_for_user(
         Work.objects.select_related("customer", "assigned_cm", "assigned_lcm"),
         request.user,
     )
@@ -413,3 +397,4 @@ admin_site.register(CustomerStepRule, CustomerStepRuleAdmin)
 admin_site.register(Work, WorkAdmin)
 admin_site.register(WorkStep)
 admin_site.register(SystemSetting, SystemSettingAdmin)
+admin_site.register(Group, GroupAdmin)
