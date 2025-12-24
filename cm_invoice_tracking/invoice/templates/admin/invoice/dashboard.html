@@ -4,11 +4,13 @@
 {% block content %}
 <h1>CM Invoice Overview</h1>
 
+{% if can_batch_generate %}
 <form method="post" style="margin-bottom: 20px;">
   {% csrf_token %}
   <button class="button" type="submit" name="action" value="bulk_current">批量生成当月</button>
   <button class="button" type="submit" name="action" value="bulk_next">批量创建下月</button>
 </form>
+{% endif %}
 
 <h2>异常<br>列表</h2>
 <p>异常 Work 数量: {{ exception_count }}</p>

@@ -6,6 +6,7 @@ from django.contrib import admin, messages
 from django.contrib.auth.admin import GroupAdmin, UserAdmin as DjangoUserAdmin
 from django.contrib.auth.models import Group
 from django.db.models import Q
+from django.http import HttpResponseForbidden
 from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.urls import path
@@ -201,17 +202,29 @@ class CustomerStepRuleAdmin(admin.ModelAdmin):
         return super().has_view_permission(request, obj=obj)
 
     def has_change_permission(self, request, obj=None):
-        if request.user.is_superuser or request.user.role in [User.Role.LCM, User.Role.HOD]:
+        if request.user.is_superuser or request.user.role in [
+            User.Role.LCM,
+            User.Role.HOD,
+            User.Role.ADMIN,
+        ]:
             return True
         return False
 
     def has_add_permission(self, request):
-        if request.user.is_superuser or request.user.role in [User.Role.LCM, User.Role.HOD]:
+        if request.user.is_superuser or request.user.role in [
+            User.Role.LCM,
+            User.Role.HOD,
+            User.Role.ADMIN,
+        ]:
             return True
         return False
 
     def has_delete_permission(self, request, obj=None):
-        if request.user.is_superuser or request.user.role in [User.Role.LCM, User.Role.HOD]:
+        if request.user.is_superuser or request.user.role in [
+            User.Role.LCM,
+            User.Role.HOD,
+            User.Role.ADMIN,
+        ]:
             return True
         return False
 
@@ -256,7 +269,10 @@ class WorkAdmin(admin.ModelAdmin):
         return visible_works_for_user(queryset, request.user)
 
     def has_delete_permission(self, request, obj=None):
-        if request.user.is_superuser or request.user.role == User.Role.HOD:
+        if request.user.is_superuser or request.user.role in [
+            User.Role.HOD,
+            User.Role.ADMIN,
+        ]:
             return True
         if request.user.role == User.Role.LCM:
             return True
@@ -272,13 +288,19 @@ class SystemSettingAdmin(admin.ModelAdmin):
 
 
 def visible_works_for_user(queryset, user):
-    if user.is_superuser or user.role == User.Role.HOD:
+    if user.is_superuser or user.role in [User.Role.HOD, User.Role.ADMIN]:
         return queryset
     if user.role == User.Role.LCM:
         return queryset.filter(Q(assigned_lcm=user) | Q(assigned_cm=user))
     if user.role == User.Role.CM:
         return queryset.filter(assigned_cm=user)
     return queryset.none()
+
+
+def can_batch_generate(user):
+    if user.is_superuser:
+        return True
+    return user.role in {User.Role.LCM, User.Role.HOD, User.Role.ADMIN}
 
 
 def overview_view(request, admin_site):
@@ -346,6 +368,8 @@ def overview_view(request, admin_site):
     if request.method == "POST":
         action = request.POST.get("action")
         if action in {"bulk_current", "bulk_next"}:
+            if not can_batch_generate(request.user):
+                return HttpResponseForbidden("Not allowed")
             target_year = today.year
             target_month = today.month
             if action == "bulk_next":
@@ -369,6 +393,7 @@ def overview_view(request, admin_site):
         exception_works=exception_works,
         exception_count=len(exception_works),
         upcoming_entries=upcoming_entries,
+        can_batch_generate=can_batch_generate(request.user),
     )
     return TemplateResponse(request, "admin/invoice/dashboard.html", context)
 

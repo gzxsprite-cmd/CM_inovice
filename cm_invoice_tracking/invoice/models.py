@@ -14,6 +14,7 @@ class User(AbstractUser):
         CM = "CM", "CM"
         LCM = "LCM", "LCM"
         HOD = "HOD", "HoD"
+        ADMIN = "ADMIN", "Admin"
 
     english_name = models.CharField(max_length=150, blank=True)
     scnx = models.CharField(max_length=10, choices=Scnx.choices, blank=True, null=True)
