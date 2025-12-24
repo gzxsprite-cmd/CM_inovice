@@ -122,6 +122,17 @@ class UserAdmin(DjangoUserAdmin):
 
 
 class CustomerAdmin(admin.ModelAdmin):
+    class CustomerAdminForm(forms.ModelForm):
+        class Meta:
+            model = Customer
+            fields = "__all__"
+
+        def clean_responsible_lcm(self):
+            lcm = self.cleaned_data.get("responsible_lcm")
+            if lcm and lcm.role != User.Role.LCM:
+                raise forms.ValidationError("Responsible LCM must have role = LCM.")
+            return lcm
+
     list_display = (
         "customer_label",
         "region",
@@ -136,10 +147,15 @@ class CustomerAdmin(admin.ModelAdmin):
     readonly_fields = ("lcm_scnx",)
     fields = ("ile", "round_location", "region", "responsible_cm", "responsible_lcm", "lcm_scnx")
     inlines = [CustomerStepRuleInline]
+    form = CustomerAdminForm
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name in {"responsible_cm", "responsible_lcm"}:
+        if db_field.name == "responsible_cm":
             kwargs["queryset"] = User.objects.order_by("english_name")
+        if db_field.name == "responsible_lcm":
+            kwargs["queryset"] = User.objects.filter(role=User.Role.LCM).order_by(
+                "english_name"
+            )
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def customer_label(self, obj):
